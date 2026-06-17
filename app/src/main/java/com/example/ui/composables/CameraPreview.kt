@@ -80,15 +80,25 @@ fun CameraPreview(
                     faceDetector.process(image)
                         .addOnSuccessListener { faces ->
                             if (faces.isNotEmpty()) {
-                                viewModel.onFaceDetected(
-                                    faces[0],
-                                    imageProxy.width,
-                                    imageProxy.height,
-                                    rotationDegrees,
-                                    previewView.width,
-                                    previewView.height,
-                                    isFront = true
-                                )
+                                val bitmap = try {
+                                    imageProxy.toBitmap()
+                                } catch (e: Exception) {
+                                    null
+                                }
+                                if (bitmap != null) {
+                                    viewModel.onFaceDetected(
+                                        faces[0],
+                                        bitmap,
+                                        imageProxy.width,
+                                        imageProxy.height,
+                                        rotationDegrees,
+                                        previewView.width,
+                                        previewView.height,
+                                        isFront = true
+                                    )
+                                } else {
+                                    viewModel.onFaceCleared()
+                                }
                             } else {
                                 viewModel.onFaceCleared()
                             }

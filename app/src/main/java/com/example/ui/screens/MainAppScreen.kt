@@ -133,16 +133,115 @@ fun MainAppScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            when (selectedTab) {
-                0 -> ScannerView(
-                    viewModel = viewModel,
-                    onAddFaceSelected = { showAddDialog = true }
-                )
-                1 -> DirectoryView(
-                    viewModel = viewModel,
-                    distinctNames = distinctNames,
-                    allTemplates = allTemplates
-                )
+            if (!viewModel.isModelReady) {
+                val downloadProgress by viewModel.modelDownloadProgress.collectAsStateWithLifecycle()
+                val downloadError by viewModel.modelDownloadError.collectAsStateWithLifecycle()
+                val context = LocalContext.current
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Fingerprint,
+                        contentDescription = "Downloading face detection core",
+                        modifier = Modifier.size(96.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Text(
+                        text = "Setting Up Biometrics",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "FaceVerify utilizes an optimized high-accuracy MobileFaceNet model on-device. This localized deep neural network keeps your photos, recordings, and biometric face profiles 100% private and offline on this phone.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                    Spacer(modifier = Modifier.height(32.dp))
+
+                    if (downloadError != null) {
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer
+                            ),
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = downloadError ?: "Unknown download error",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    textAlign = TextAlign.Center
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Button(
+                                    onClick = { viewModel.triggerModelDownload(context) },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.error
+                                    ),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Text("Retry Download", fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    } else {
+                        val progress = downloadProgress
+                        if (progress != null) {
+                            LinearProgressIndicator(
+                                progress = { progress / 100f },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(8.dp)
+                                    .clip(RoundedCornerShape(4.dp)),
+                                color = MaterialTheme.colorScheme.primary,
+                                trackColor = MaterialTheme.colorScheme.primaryContainer
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "Downloading deep neural core: $progress%",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        } else {
+                            CircularProgressIndicator(
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "Initializing download stream...",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            } else {
+                when (selectedTab) {
+                    0 -> ScannerView(
+                        viewModel = viewModel,
+                        onAddFaceSelected = { showAddDialog = true }
+                    )
+                    1 -> DirectoryView(
+                        viewModel = viewModel,
+                        distinctNames = distinctNames,
+                        allTemplates = allTemplates
+                    )
+                }
             }
 
             // Enrollment triggers name prompt

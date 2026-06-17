@@ -55,6 +55,9 @@ android {
     compose = true
     buildConfig = true
   }
+  androidResources {
+    noCompress.add("tflite")
+  }
   testOptions { unitTests { isIncludeAndroidResources = true } }
 }
 
@@ -76,6 +79,8 @@ dependencies {
   implementation(libs.androidx.camera.core)
   implementation(libs.androidx.camera.lifecycle)
   implementation(libs.androidx.camera.view)
+  implementation(libs.tensorflow.lite)
+  implementation(libs.tensorflow.lite.support)
   implementation(libs.mlkit.face.detection)
   implementation(libs.androidx.compose.material.icons.core)
   implementation(libs.androidx.compose.material.icons.extended)
@@ -120,3 +125,4 @@ dependencies {
   "ksp"(libs.androidx.room.compiler)
   "ksp"(libs.moshi.kotlin.codegen)
 }
+

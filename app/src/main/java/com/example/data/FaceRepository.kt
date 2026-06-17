@@ -1,7 +1,7 @@
 package com.example.data
 
 import com.example.model.FaceTemplate
-import com.example.utils.FaceSignature
+import com.example.utils.FaceNetModel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
 
@@ -28,9 +28,9 @@ class FaceRepository(private val faceTemplateDao: FaceTemplateDao) {
 
     /**
      * Finds the best match for the query features from all stored face templates.
-     * Compares using scale-invariant weighted cosine similarity.
+     * Compares using L2-normalized cosine similarity (dot product on pre-normalized inputs).
      */
-    suspend fun findBestMatch(queryFeatures: FloatArray, threshold: Float = 0.925f): MatchResult? {
+    suspend fun findBestMatch(queryFeatures: FloatArray, threshold: Float = 0.72f): MatchResult? {
         val templates = allTemplates.firstOrNull() ?: return null
         if (templates.isEmpty()) return null
 
@@ -39,9 +39,14 @@ class FaceRepository(private val faceTemplateDao: FaceTemplateDao) {
 
         for (template in templates) {
             val storedFeatures = template.getFeaturesArray()
-            if (storedFeatures.size != FaceSignature.DIMENSION) continue
+            if (storedFeatures.size != FaceNetModel.EMBEDDING_DIM) continue
             
-            val score = FaceSignature.similarity(queryFeatures, storedFeatures)
+            // Dot product of L2-normalized vectors is exactly the cosine similarity
+            var score = 0f
+            for (i in 0 until FaceNetModel.EMBEDDING_DIM) {
+                score += queryFeatures[i] * storedFeatures[i]
+            }
+
             if (score > bestScore) {
                 bestScore = score
                 bestMatch = template

@@ -11,7 +11,9 @@ import com.example.data.FaceRepository
 import com.example.data.MatchResult
 import com.example.model.FaceTemplate
 import com.example.utils.FacePose
-import com.example.utils.FaceSignature
+import com.example.utils.FaceAligner
+import com.example.utils.FaceNetModel
+import com.example.utils.ModelDownloader
 import com.example.utils.PoseDetector
 import com.google.mlkit.vision.face.Face
 import kotlinx.coroutines.flow.SharingStarted
@@ -22,6 +24,32 @@ import kotlinx.coroutines.launch
 class FaceVerifyViewModel(application: Application) : AndroidViewModel(application) {
     private val database = AppDatabase.getDatabase(application)
     private val repository = FaceRepository(database.faceTemplateDao())
+    private val faceNetModel = FaceNetModel(application)
+
+    var isModelReady by mutableStateOf(false)
+    val modelDownloadProgress = ModelDownloader.downloadProgress
+    val modelDownloadError = ModelDownloader.errorMessage
+
+    init {
+        isModelReady = ModelDownloader.isModelAvailable(application)
+        if (!isModelReady) {
+            triggerModelDownload(application)
+        }
+    }
+
+    fun triggerModelDownload(context: android.content.Context) {
+        viewModelScope.launch {
+            statusMessage = "Downloading biometric neural network..."
+            ModelDownloader.startDownload(context) {
+                isModelReady = faceNetModel.reload(context)
+                if (isModelReady) {
+                    statusMessage = "Biometric network ready. Looking for face..."
+                } else {
+                    statusMessage = "⚠️ Loaded network corrupted. Please restart app."
+                }
+            }
+        }
+    }
 
     val allTemplates: StateFlow<List<FaceTemplate>> = repository.allTemplates
         .stateIn(
@@ -100,6 +128,7 @@ class FaceVerifyViewModel(application: Application) : AndroidViewModel(applicati
      */
     fun onFaceDetected(
         face: Face,
+        frameBitmap: android.graphics.Bitmap,
         imgWidth: Int,
         imgHeight: Int,
         rotation: Int,
@@ -107,6 +136,11 @@ class FaceVerifyViewModel(application: Application) : AndroidViewModel(applicati
         previewH: Int,
         isFront: Boolean
     ) {
+        if (!isModelReady) {
+            statusMessage = "⏳ Downloading biometric model library..."
+            return
+        }
+
         // Map original boundary box to match screen resolution coordinates
         val mapped = mapToPreview(
             face.boundingBox, imgWidth, imgHeight, rotation, previewW, previewH, isFront
@@ -131,9 +165,14 @@ class FaceVerifyViewModel(application: Application) : AndroidViewModel(applicati
             return
         }
 
-        val signature = FaceSignature.extract(face)
+        val alignedBitmap = FaceAligner.align(frameBitmap, face, rotation, isFront)
+        if (alignedBitmap == null) {
+            statusMessage = "⚠️ Ensure eyes are visible for alignment"
+            return
+        }
+        val signature = faceNetModel.getEmbedding(alignedBitmap)
         if (signature == null) {
-            statusMessage = "⚠️ Ensure eyes, nose, and mouth are visible"
+            statusMessage = "⚠️ Error calculating face signature"
             return
         }
 
@@ -215,7 +254,7 @@ class FaceVerifyViewModel(application: Application) : AndroidViewModel(applicati
         if (samples.isEmpty()) return null
         if (samples.size == 1) return samples[0]
 
-        val size = FaceSignature.DIMENSION
+        val size = FaceNetModel.EMBEDDING_DIM
         val keep = mutableListOf<FloatArray>()
 
         // Look for consistent samples (drop out-of-bounds micro flashes)
@@ -224,11 +263,15 @@ class FaceVerifyViewModel(application: Application) : AndroidViewModel(applicati
             var count = 0
             for (j in samples.indices) {
                 if (i == j) continue
-                sumSimilarity += FaceSignature.similarity(samples[i], samples[j])
+                var score = 0f
+                for (d in 0 until size) {
+                    score += samples[i][d] * samples[j][d]
+                }
+                sumSimilarity += score
                 count++
             }
             val avgSim = if (count == 0) 1f else sumSimilarity / count
-            if (avgSim >= 0.90f) { // high consistency requirement
+            if (avgSim >= 0.82f) { // high consistency requirement
                 keep.add(samples[i])
             }
         }
@@ -243,7 +286,24 @@ class FaceVerifyViewModel(application: Application) : AndroidViewModel(applicati
         for (d in 0 until size) {
             mean[d] /= pool.size
         }
+        
+        // Re-normalize the averaged vector so it lies perfectly on the unit sphere
+        var sumSquares = 0f
+        for (d in 0 until size) {
+            sumSquares += mean[d] * mean[d]
+        }
+        val norm = kotlin.math.sqrt(sumSquares.toDouble()).toFloat()
+        if (norm > 1e-10f) {
+            for (d in 0 until size) {
+                mean[d] /= norm
+            }
+        }
         return mean
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        faceNetModel.close()
     }
 
     private fun mapToPreview(
